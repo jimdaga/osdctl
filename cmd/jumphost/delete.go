@@ -123,18 +123,7 @@ func (j *jumphostConfig) deleteSecurityGroup(ctx context.Context) error {
 		return err
 	}
 
-	resp, err := j.awsClient.DescribeSecurityGroups(ctx, &ec2.DescribeSecurityGroupsInput{
-		Filters: append(generateTagFilters(j.tags), []types.Filter{
-			{
-				Name:   aws.String("group-name"),
-				Values: []string{awsResourceName},
-			},
-			{
-				Name:   aws.String("vpc-id"),
-				Values: []string{vpcId},
-			},
-		}...),
-	})
+	resp, err := j.getSecurityGroup(ctx, vpcId)
 	if err != nil {
 		return fmt.Errorf("failed to describe security groups: %w", err)
 	}

@@ -29,6 +29,7 @@ func NewCmdJumphost() *cobra.Command {
 	jumphost.AddCommand(
 		newCmdCreateJumphost(),
 		newCmdDeleteJumphost(),
+		newCmdUpdateJumphost(),
 	)
 
 	return jumphost
@@ -51,6 +52,7 @@ type jumphostAWSClient interface {
 
 	AuthorizeSecurityGroupIngress(ctx context.Context, params *ec2.AuthorizeSecurityGroupIngressInput, optFns ...func(options *ec2.Options)) (*ec2.AuthorizeSecurityGroupIngressOutput, error)
 	CreateSecurityGroup(ctx context.Context, params *ec2.CreateSecurityGroupInput, optFns ...func(options *ec2.Options)) (*ec2.CreateSecurityGroupOutput, error)
+	ModifySecurityGroupRules(ctx context.Context, params *ec2.ModifySecurityGroupRulesInput, optFns ...func(options *ec2.Options)) (*ec2.ModifySecurityGroupRulesOutput, error)
 	DeleteSecurityGroup(ctx context.Context, params *ec2.DeleteSecurityGroupInput, optFns ...func(options *ec2.Options)) (*ec2.DeleteSecurityGroupOutput, error)
 	DescribeSecurityGroups(ctx context.Context, params *ec2.DescribeSecurityGroupsInput, optFns ...func(options *ec2.Options)) (*ec2.DescribeSecurityGroupsOutput, error)
 
