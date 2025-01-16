@@ -33,17 +33,6 @@ func newCmdUpdateJumphost() *cobra.Command {
   osdctl jumphost update --subnet-id {public-subnet-id} --set-self-ip
   osdctl jumphost update --subnet-id {public-subnet-id} --set-ip 1.2.3.4`,
 		Args: cobra.NoArgs,
-		PreRunE: func(cmd *cobra.Command, args []string) error {
-			// Ensure only one of --set-ip or --set-self-ip is provided
-			if setIp != "" && setSelfIp {
-				log.Fatal("only one of --set-ip or --set-self-ip can be specified")
-			}
-			if setIp == "" && !setSelfIp {
-				log.Fatal("one of --set-ip or --set-self-ip must be specified")
-			}
-
-			return nil
-		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			j, err := initJumphostConfig(context.TODO(), clusterId, subnetId)
 			if err != nil {
@@ -58,18 +47,20 @@ func newCmdUpdateJumphost() *cobra.Command {
 	updateCmd.MarkFlagRequired("subnet-id")
 	updateCmd.Flags().StringVar(&setIp, "set-ip", "", "Update AWS Security Group to allow specified IP")
 	updateCmd.Flags().BoolVarP(&setSelfIp, "set-self-ip", "", false, "Update AWS Security Group to allow your auto-discovered egress IP")
+	updateCmd.MarkFlagsMutuallyExclusive("set-ip", "set-self-ip")
 
 	return updateCmd
 }
 
 func (j *jumphostConfig) runUpdate(ctx context.Context, setIp string, setSelfIp bool) error {
-	ip := ""
 
+	// Lookup VPC Subnet ID
 	vpcId, err := j.findVpcId(ctx)
 	if err != nil {
 		return err
 	}
 
+	// Lookup SG for VPC Subnet ID
 	sgId, err := j.getSecurityGroup(ctx, vpcId)
 	if err != nil {
 		return err
@@ -79,6 +70,22 @@ func (j *jumphostConfig) runUpdate(ctx context.Context, setIp string, setSelfIp 
 		log.Fatalf("unable to find security group matching name %s", []string{awsResourceName})
 	}
 
+	// Add IP to Security Group Rules when either --set-self-ip or --set-ip are provided
+	// (Currently this is the only feature of the "update" command)
+	if setIp != "" || setSelfIp {
+		j.updateIpList(ctx, *sgId.SecurityGroups[0].GroupId, setIp, setSelfIp)
+	}
+
+	return nil
+}
+
+// updateIpList will either take in a user provided IP Address, or discover your current Egress IP Address
+// and will update the Security Group to allow the new IP Address
+func (j *jumphostConfig) updateIpList(ctx context.Context, sgId string, setIp string, setSelfIp bool) {
+
+	var ip string
+
+	// Figure out what IP to use (self or provided)
 	if setIp != "" {
 		err := validateIP(setIp)
 		if err != nil {
@@ -90,17 +97,15 @@ func (j *jumphostConfig) runUpdate(ctx context.Context, setIp string, setSelfIp 
 	}
 
 	if setSelfIp {
-		ip, err = determinePublicIp()
+		ip, err := determinePublicIp()
 		if err != nil {
 			log.Printf("skipping modifying security group rule - failed to determine public ip: %s", err)
-			return nil
 		}
 		log.Printf("updating AWS Security Group to allow your local egress IP: %s\n", ip)
 	}
 
-	if err := j.allowJumphostSshFromIp(ctx, *sgId.SecurityGroups[0].GroupId, ip); err != nil {
+	// Update SG with new IP
+	if err := j.allowJumphostSshFromIp(ctx, sgId, ip); err != nil {
 		log.Fatal("failed to allow SSH to jumphost:", err)
 	}
-
-	return nil
 }

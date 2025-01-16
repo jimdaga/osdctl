@@ -46,7 +46,7 @@ func validateIP(ipStr string) error {
 	return nil
 }
 
-// DeterminePublicIp returns the public IP determined by a GET request to https://checkip.amazonaws.com
+// determinePublicIp returns the public IP determined by a GET request to https://checkip.amazonaws.com
 func determinePublicIp() (string, error) {
 	resp, err := http.Get("https://checkip.amazonaws.com")
 	if err != nil {
@@ -67,6 +67,7 @@ func determinePublicIp() (string, error) {
 	ip := net.ParseIP(strings.TrimSpace(string(body)))
 	if ip != nil {
 		return ip.String(), nil
+		// return "1.2.3.4", nil
 	}
 
 	return "", fmt.Errorf("received an invalid ip: %s", ip)
