@@ -172,8 +172,15 @@ func (j *jumphostConfig) createSecurityGroup(ctx context.Context) (string, error
 	}
 	log.Printf("created security group: %s", *resp.GroupId)
 
-	if err := j.allowJumphostSshFromIp(ctx, *resp.GroupId); err != nil {
-		return *resp.GroupId, fmt.Errorf("failed to allow SSH to jumphost: %w", err)
+	ip, err := determinePublicIp()
+	if err != nil {
+		log.Printf("skipping modifying security group rule - failed to determine public ip: %s", err)
+	} else {
+		log.Printf("updating AWS Security Group to allow your local egress IP: %s\n", ip)
+
+		if err := j.allowJumphostSshFromIp(ctx, *resp.GroupId, ip); err != nil {
+			return *resp.GroupId, fmt.Errorf("failed to allow SSH to jumphost: %w", err)
+		}
 	}
 
 	return *resp.GroupId, nil
@@ -242,7 +249,7 @@ func (j *jumphostConfig) createEc2Jumphost(ctx context.Context, securityGroupId 
 		return fmt.Errorf("%s: terminated %s after timing out waiting for instance to be running", err, *resp.Instances[0].InstanceId)
 	}
 
-	describeInstancesResp, err := j.awsClient.DescribeInstances(ctx, &ec2.DescribeInstancesInput{
+	describeInstancesResp, _ := j.awsClient.DescribeInstances(ctx, &ec2.DescribeInstancesInput{
 		InstanceIds: []string{*resp.Instances[0].InstanceId},
 	})
 
@@ -254,7 +261,7 @@ func (j *jumphostConfig) createEc2Jumphost(ctx context.Context, securityGroupId 
 // assembleNextSteps returns a string with helpful next steps for connecting to the created jumphost
 func (j *jumphostConfig) assembleNextSteps() string {
 	if j.ec2PublicIp == "" {
-		return fmt.Sprintf("could not determine EC2 public ip - please verify, but something likely went wrong")
+		return fmt.Sprintln("could not determine EC2 public ip - please verify, but something likely went wrong")
 	}
 
 	if j.keyFilepath != "" {

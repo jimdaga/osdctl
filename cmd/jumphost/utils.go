@@ -37,6 +37,15 @@ func (j *jumphostConfig) findVpcId(ctx context.Context) (string, error) {
 	return *resp.Subnets[0].VpcId, nil
 }
 
+// validateIP checks if the given IP address is valid.
+func validateIP(ipStr string) error {
+	ip := net.ParseIP(ipStr)
+	if ip == nil {
+		return fmt.Errorf("invalid IP address: %s", ipStr)
+	}
+	return nil
+}
+
 // DeterminePublicIp returns the public IP determined by a GET request to https://checkip.amazonaws.com
 func determinePublicIp() (string, error) {
 	resp, err := http.Get("https://checkip.amazonaws.com")
@@ -63,7 +72,7 @@ func determinePublicIp() (string, error) {
 	return "", fmt.Errorf("received an invalid ip: %s", ip)
 }
 
-// getSecurityGroup
+// getSecurityGroup queries AWS for a Security Group for the given VPC ID and returns SG details if found
 func (j *jumphostConfig) getSecurityGroup(ctx context.Context, vpcId string) (*ec2.DescribeSecurityGroupsOutput, error) {
 	log.Printf("searching for security groups associated with subnet id: %s", vpcId)
 	resp, err := j.awsClient.DescribeSecurityGroups(ctx, &ec2.DescribeSecurityGroupsInput{
@@ -89,13 +98,7 @@ func (j *jumphostConfig) getSecurityGroup(ctx context.Context, vpcId string) (*e
 
 // allowJumphostSshFromIp uses ec2:AuthorizeSecurityGroupIngress to create an inbound rule to allow
 // TCP traffic on port 22 from the user's public IP.
-func (j *jumphostConfig) allowJumphostSshFromIp(ctx context.Context, groupId string) error {
-	ip, err := determinePublicIp()
-	if err != nil {
-		log.Printf("skipping modifying security group rule - failed to determine public ip: %s", err)
-		return nil
-	}
-
+func (j *jumphostConfig) allowJumphostSshFromIp(ctx context.Context, groupId string, ip string) error {
 	if _, err := j.awsClient.AuthorizeSecurityGroupIngress(ctx, &ec2.AuthorizeSecurityGroupIngressInput{
 		CidrIp:     aws.String(fmt.Sprintf("%s/32", ip)),
 		FromPort:   aws.Int32(22),
