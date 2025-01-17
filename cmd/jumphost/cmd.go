@@ -20,6 +20,14 @@ const (
 	privateSubnetTagKey = "kubernetes.io/role/internal-elb"
 )
 
+// cmdArgs holds the arguments for the update command.
+type cmdArgs struct {
+	// clusterId string
+	subnetId  string
+	setIp     string
+	setSelfIp bool
+}
+
 func NewCmdJumphost() *cobra.Command {
 	jumphost := &cobra.Command{
 		Use:  "jumphost",
@@ -35,40 +43,9 @@ func NewCmdJumphost() *cobra.Command {
 	return jumphost
 }
 
-type jumphostConfig struct {
-	awsClient jumphostAWSClient
-	cluster   *cmv1.Cluster
-	subnetId  string
-	tags      []types.Tag
-
-	keyFilepath string
-	ec2PublicIp string
-}
-
-type jumphostAWSClient interface {
-	CreateKeyPair(ctx context.Context, params *ec2.CreateKeyPairInput, optFns ...func(options *ec2.Options)) (*ec2.CreateKeyPairOutput, error)
-	DeleteKeyPair(ctx context.Context, params *ec2.DeleteKeyPairInput, optFns ...func(options *ec2.Options)) (*ec2.DeleteKeyPairOutput, error)
-	DescribeKeyPairs(ctx context.Context, params *ec2.DescribeKeyPairsInput, optFns ...func(options *ec2.Options)) (*ec2.DescribeKeyPairsOutput, error)
-
-	AuthorizeSecurityGroupIngress(ctx context.Context, params *ec2.AuthorizeSecurityGroupIngressInput, optFns ...func(options *ec2.Options)) (*ec2.AuthorizeSecurityGroupIngressOutput, error)
-	CreateSecurityGroup(ctx context.Context, params *ec2.CreateSecurityGroupInput, optFns ...func(options *ec2.Options)) (*ec2.CreateSecurityGroupOutput, error)
-	ModifySecurityGroupRules(ctx context.Context, params *ec2.ModifySecurityGroupRulesInput, optFns ...func(options *ec2.Options)) (*ec2.ModifySecurityGroupRulesOutput, error)
-	DeleteSecurityGroup(ctx context.Context, params *ec2.DeleteSecurityGroupInput, optFns ...func(options *ec2.Options)) (*ec2.DeleteSecurityGroupOutput, error)
-	DescribeSecurityGroups(ctx context.Context, params *ec2.DescribeSecurityGroupsInput, optFns ...func(options *ec2.Options)) (*ec2.DescribeSecurityGroupsOutput, error)
-
-	DescribeImages(ctx context.Context, params *ec2.DescribeImagesInput, optFns ...func(options *ec2.Options)) (*ec2.DescribeImagesOutput, error)
-	DescribeSubnets(ctx context.Context, params *ec2.DescribeSubnetsInput, optFns ...func(options *ec2.Options)) (*ec2.DescribeSubnetsOutput, error)
-	DescribeInstances(ctx context.Context, params *ec2.DescribeInstancesInput, optFns ...func(options *ec2.Options)) (*ec2.DescribeInstancesOutput, error)
-	RunInstances(ctx context.Context, params *ec2.RunInstancesInput, optFns ...func(options *ec2.Options)) (*ec2.RunInstancesOutput, error)
-	TerminateInstances(ctx context.Context, params *ec2.TerminateInstancesInput, optFns ...func(options *ec2.Options)) (*ec2.TerminateInstancesOutput, error)
-
-	// CreateTags (ec2:CreateTags) is not used explicitly, but all AWS resources will be created with tags
-	CreateTags(ctx context.Context, params *ec2.CreateTagsInput, optFns ...func(options *ec2.Options)) (*ec2.CreateTagsOutput, error)
-}
-
 // initJumphostConfig initializes a jumphostConfig struct for use with jumphost commands.
 // Generally, this function should always be used as opposed to initializing the struct by hand.
-func initJumphostConfig(ctx context.Context, clusterId, subnetId string) (*jumphostConfig, error) {
+func initJumphostConfig(ctx context.Context, a cmdArgs) (*jumphostConfig, error) {
 	ocm, err := utils.CreateConnection()
 	if err != nil {
 		return nil, err
@@ -98,7 +75,7 @@ func initJumphostConfig(ctx context.Context, clusterId, subnetId string) (*jumph
 
 	return &jumphostConfig{
 		awsClient: ec2.NewFromConfig(cfg),
-		subnetId:  subnetId,
+		subnetId:  a.subnetId,
 		tags: []types.Tag{
 			//{
 			//	// This tag will allow the uninstaller to clean up orphaned resources in worst-case scenarios
@@ -133,21 +110,4 @@ func validateCluster(cluster *cmv1.Cluster) error {
 	}
 
 	return errors.New("unexpected error, nil cluster provided")
-}
-
-// generateTagFilters converts a slice of expected tags to a slice of corresponding filters to search by.
-func generateTagFilters(tags []types.Tag) []types.Filter {
-	if len(tags) == 0 {
-		return nil
-	}
-
-	filters := make([]types.Filter, len(tags))
-	for i, tag := range tags {
-		filters[i] = types.Filter{
-			Name:   aws.String(fmt.Sprintf("tag:%s", *tag.Key)),
-			Values: []string{*tag.Value},
-		}
-	}
-
-	return filters
 }

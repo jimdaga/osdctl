@@ -13,10 +13,7 @@ import (
 )
 
 func newCmdDeleteJumphost() *cobra.Command {
-	var (
-		clusterId string
-		subnetId  string
-	)
+	cmdArgs := &cmdArgs{}
 
 	create := &cobra.Command{
 		Use:          "delete",
@@ -59,7 +56,7 @@ func newCmdDeleteJumphost() *cobra.Command {
   osdctl jumphost delete --subnet-id public-subnet-id`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			j, err := initJumphostConfig(context.TODO(), clusterId, subnetId)
+			j, err := initJumphostConfig(context.TODO(), *cmdArgs)
 			if err != nil {
 				return err
 			}
@@ -68,7 +65,7 @@ func newCmdDeleteJumphost() *cobra.Command {
 		},
 	}
 
-	create.Flags().StringVar(&subnetId, "subnet-id", "", "subnet id to search for and delete a jumphost in")
+	create.Flags().StringVar(&cmdArgs.subnetId, "subnet-id", "", "subnet id to search for and delete a jumphost in")
 	create.MarkFlagRequired("subnet-id")
 
 	return create
@@ -88,6 +85,23 @@ func (j *jumphostConfig) runDelete(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// generateTagFilters converts a slice of expected tags to a slice of corresponding filters to search by.
+func generateTagFilters(tags []types.Tag) []types.Filter {
+	if len(tags) == 0 {
+		return nil
+	}
+
+	filters := make([]types.Filter, len(tags))
+	for i, tag := range tags {
+		filters[i] = types.Filter{
+			Name:   aws.String(fmt.Sprintf("tag:%s", *tag.Key)),
+			Values: []string{*tag.Value},
+		}
+	}
+
+	return filters
 }
 
 // deleteKeyPair searches for a EC2 key pairs by the expected tag filter and deletes the first matching key pair

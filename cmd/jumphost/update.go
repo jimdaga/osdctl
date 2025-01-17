@@ -8,12 +8,7 @@ import (
 )
 
 func newCmdUpdateJumphost() *cobra.Command {
-	var (
-		clusterId string
-		subnetId  string
-		setIp     string
-		setSelfIp bool
-	)
+	cmdArgs := &cmdArgs{}
 
 	updateCmd := &cobra.Command{
 		Use:          "update",
@@ -34,25 +29,26 @@ func newCmdUpdateJumphost() *cobra.Command {
   osdctl jumphost update --subnet-id {public-subnet-id} --set-ip 1.2.3.4`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			j, err := initJumphostConfig(context.TODO(), clusterId, subnetId)
+			j, err := initJumphostConfig(context.TODO(), *cmdArgs)
 			if err != nil {
 				return err
 			}
 
-			return j.runUpdate(context.TODO(), setIp, setSelfIp)
+			return j.runUpdate(context.TODO(), *cmdArgs)
 		},
 	}
 
-	updateCmd.Flags().StringVar(&subnetId, "subnet-id", "", "Public subnet ID to create a jumphost in")
+	updateCmd.Flags().StringVar(&cmdArgs.subnetId, "subnet-id", "", "Public subnet ID to create a jumphost in")
 	updateCmd.MarkFlagRequired("subnet-id")
-	updateCmd.Flags().StringVar(&setIp, "set-ip", "", "Update AWS Security Group to allow specified IP")
-	updateCmd.Flags().BoolVarP(&setSelfIp, "set-self-ip", "", false, "Update AWS Security Group to allow your auto-discovered egress IP")
+	updateCmd.Flags().StringVar(&cmdArgs.setIp, "set-ip", "", "Update AWS Security Group to allow specified IP")
+	updateCmd.Flags().BoolVarP(&cmdArgs.setSelfIp, "set-self-ip", "", false, "Update AWS Security Group to allow your auto-discovered egress IP")
+	updateCmd.MarkFlagsOneRequired("set-ip", "set-self-ip")
 	updateCmd.MarkFlagsMutuallyExclusive("set-ip", "set-self-ip")
 
 	return updateCmd
 }
 
-func (j *jumphostConfig) runUpdate(ctx context.Context, setIp string, setSelfIp bool) error {
+func (j *jumphostConfig) runUpdate(ctx context.Context, a cmdArgs) error {
 
 	// Lookup VPC Subnet ID
 	vpcId, err := j.findVpcId(ctx)
@@ -72,8 +68,8 @@ func (j *jumphostConfig) runUpdate(ctx context.Context, setIp string, setSelfIp 
 
 	// Add IP to Security Group Rules when either --set-self-ip or --set-ip are provided
 	// (Currently this is the only feature of the "update" command)
-	if setIp != "" || setSelfIp {
-		j.updateIpList(ctx, *sgId.SecurityGroups[0].GroupId, setIp, setSelfIp)
+	if a.setIp != "" || a.setSelfIp {
+		j.updateIpList(ctx, a, *sgId.SecurityGroups[0].GroupId)
 	}
 
 	return nil
@@ -81,31 +77,36 @@ func (j *jumphostConfig) runUpdate(ctx context.Context, setIp string, setSelfIp 
 
 // updateIpList will either take in a user provided IP Address, or discover your current Egress IP Address
 // and will update the Security Group to allow the new IP Address
-func (j *jumphostConfig) updateIpList(ctx context.Context, sgId string, setIp string, setSelfIp bool) {
+func (j *jumphostConfig) updateIpList(ctx context.Context, a cmdArgs, sgId string) {
 
-	var ip string
-
-	// Figure out what IP to use (self or provided)
-	if setIp != "" {
-		err := validateIP(setIp)
-		if err != nil {
-			log.Fatalf("provided IP %s is not an valid IP Address", setIp)
-		}
-
-		log.Printf("updating AWS Security Group to allow specified IP: %s\n", setIp)
-		ip = setIp
-	}
-
-	if setSelfIp {
-		ip, err := determinePublicIp()
-		if err != nil {
-			log.Printf("skipping modifying security group rule - failed to determine public ip: %s", err)
-		}
-		log.Printf("updating AWS Security Group to allow your local egress IP: %s\n", ip)
-	}
+	// Pass CLI args to logic that figures out what IP to set
+	ip := findIP(a)
 
 	// Update SG with new IP
 	if err := j.allowJumphostSshFromIp(ctx, sgId, ip); err != nil {
 		log.Fatal("failed to allow SSH to jumphost:", err)
 	}
+}
+
+func findIP(a cmdArgs) string {
+	var ip string
+
+	// Figure out what IP to use (self or provided)
+	if a.setIp != "" {
+		err := validateIP(a.setIp)
+		if err != nil {
+			log.Fatalf("provided IP %s is not an valid IP Address", a.setIp)
+		}
+		return a.setIp
+	}
+
+	if a.setSelfIp {
+		ip, err := determinePublicIp()
+		if err != nil {
+			log.Fatalf("skipping modifying security group rule - failed to determine public ip: %s", err)
+		}
+		return ip
+	}
+
+	return ip
 }

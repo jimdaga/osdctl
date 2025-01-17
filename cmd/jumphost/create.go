@@ -15,10 +15,7 @@ import (
 )
 
 func newCmdCreateJumphost() *cobra.Command {
-	var (
-		clusterId string
-		subnetId  string
-	)
+	cmdArgs := &cmdArgs{}
 
 	create := &cobra.Command{
 		Use:          "create",
@@ -65,7 +62,7 @@ func newCmdCreateJumphost() *cobra.Command {
   osdctl jumphost delete --subnet-id public-subnet-id`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			j, err := initJumphostConfig(context.TODO(), clusterId, subnetId)
+			j, err := initJumphostConfig(context.TODO(), *cmdArgs)
 			if err != nil {
 				return err
 			}
@@ -75,7 +72,7 @@ func newCmdCreateJumphost() *cobra.Command {
 	}
 
 	// create.Flags().StringVarP(&clusterId, "cluster-id", "c", "", "OCM internal/external cluster id trying to access via a jumphost")
-	create.Flags().StringVar(&subnetId, "subnet-id", "", "public subnet id to create a jumphost in")
+	create.Flags().StringVar(&cmdArgs.subnetId, "subnet-id", "", "public subnet id to create a jumphost in")
 	create.MarkFlagRequired("subnet-id")
 
 	return create
