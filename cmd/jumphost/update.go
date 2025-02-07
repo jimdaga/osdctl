@@ -2,6 +2,7 @@ package jumphost
 
 import (
 	"context"
+	"fmt"
 	"log"
 
 	"github.com/spf13/cobra"
@@ -80,7 +81,10 @@ func (j *jumphostConfig) runUpdate(ctx context.Context, a cmdArgs) error {
 func (j *jumphostConfig) updateIpList(ctx context.Context, a cmdArgs, sgId string) {
 
 	// Pass CLI args to logic that figures out what IP to set
-	ip := findIP(a)
+	ip, err := findIP(a)
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
 
 	// Update SG with new IP
 	if err := j.allowJumphostSshFromIp(ctx, sgId, ip); err != nil {
@@ -88,25 +92,29 @@ func (j *jumphostConfig) updateIpList(ctx context.Context, a cmdArgs, sgId strin
 	}
 }
 
-func findIP(a cmdArgs) string {
+func findIP(a cmdArgs) (string, error) {
 	var ip string
 
 	// Figure out what IP to use (self or provided)
+	if (a.setIp != "") && (a.setSelfIp) {
+		return "", fmt.Errorf("you provided more than one way of setting an IP")
+	}
+
 	if a.setIp != "" {
 		err := validateIP(a.setIp)
 		if err != nil {
-			log.Fatalf("provided IP %s is not an valid IP Address", a.setIp)
+			return "", fmt.Errorf("provided IP %s is not an valid IP Address", a.setIp)
 		}
-		return a.setIp
+		return a.setIp, nil
 	}
 
 	if a.setSelfIp {
 		ip, err := determinePublicIp()
 		if err != nil {
-			log.Fatalf("skipping modifying security group rule - failed to determine public ip: %s", err)
+			return "", fmt.Errorf("skipping modifying security group rule - failed to determine public ip: %s", err)
 		}
-		return ip
+		return ip, nil
 	}
 
-	return ip
+	return ip, nil
 }
